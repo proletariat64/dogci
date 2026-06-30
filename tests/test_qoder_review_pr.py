@@ -34,12 +34,12 @@ Kimi-K2.7-Code
         self.assertEqual(model, "auto")
         self.assertTrue(fallback_used)
 
-    def test_qoder_model_restriction_falls_back_to_lite(self) -> None:
+    def test_qoder_model_restriction_falls_back_to_qwen(self) -> None:
         calls = []
 
         def fake_run_qoder(prompt: str, model: str) -> tuple[int, str, str]:
             calls.append(model)
-            if model in {"GLM-5.2", "auto"}:
+            if model == "GLM-5.2":
                 return 1, f"Model '{model}' is restricted for this repository by a security policy.", ""
             return 0, "PASS — Qoder PR Review\n\n## Summary\n- ok\n", ""
 
@@ -47,8 +47,38 @@ Kimi-K2.7-Code
             code, stdout, stderr, model = runner.run_qoder_with_model_fallback("prompt", "GLM-5.2")
 
         self.assertEqual(code, 0)
-        self.assertEqual(model, "Lite")
-        self.assertEqual(calls, ["GLM-5.2", "auto", "Lite"])
+        self.assertEqual(model, "Qwen3.7-Max")
+        self.assertEqual(calls, ["GLM-5.2", "Qwen3.7-Max"])
+
+    def test_qoder_model_restriction_falls_back_to_auto_after_qwen(self) -> None:
+        calls = []
+
+        def fake_run_qoder(prompt: str, model: str) -> tuple[int, str, str]:
+            calls.append(model)
+            if model in {"GLM-5.2", "Qwen3.7-Max"}:
+                return 1, f"Model '{model}' is restricted for this repository by a security policy.", ""
+            return 0, "PASS — Qoder PR Review\n\n## Summary\n- ok\n", ""
+
+        with mock.patch.object(runner, "run_qoder", side_effect=fake_run_qoder):
+            code, stdout, stderr, model = runner.run_qoder_with_model_fallback("prompt", "GLM-5.2")
+
+        self.assertEqual(code, 0)
+        self.assertEqual(model, "auto")
+        self.assertEqual(calls, ["GLM-5.2", "Qwen3.7-Max", "auto"])
+
+    def test_auto_model_discovery_fallback_does_not_try_named_models(self) -> None:
+        calls = []
+
+        def fake_run_qoder(prompt: str, model: str) -> tuple[int, str, str]:
+            calls.append(model)
+            return 1, "Not logged in", ""
+
+        with mock.patch.object(runner, "run_qoder", side_effect=fake_run_qoder):
+            code, stdout, stderr, model = runner.run_qoder_with_model_fallback("prompt", "auto")
+
+        self.assertEqual(code, 1)
+        self.assertEqual(model, "auto")
+        self.assertEqual(calls, ["auto"])
 
     def test_binary_only_files_skip(self) -> None:
         self.assertTrue(runner.should_skip_review(["assets/logo.png", "docs/manual.pdf", "assets/font.woff2"]))
@@ -139,9 +169,9 @@ FAIL — Qoder PR Review
 
         def fake_gh_api_json(args: list[str]) -> object:
             endpoint = args[0]
-            if "page=1" in endpoint:
+            if "&page=1" in endpoint:
                 return page1
-            if "page=2" in endpoint:
+            if "&page=2" in endpoint:
                 return page2
             raise AssertionError(endpoint)
 

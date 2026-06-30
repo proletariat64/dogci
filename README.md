@@ -9,7 +9,7 @@ Standalone target-repo deployment for Qoder-powered Pull Request review CI.
 - uses Qoder `/review`
 - prefers the latest available GLM model
 - falls back to `auto` when model discovery fails
-- falls back from repository-restricted models to `auto`, then `Lite`
+- falls back from repository-restricted GLM models to `Qwen3.7-Max`, then `auto`
 - deploys the bundled review policy to project-root `AGENTS.md` before Qoder starts
 - skips only explicit safe binary/document asset PRs
 - posts or updates one stable PR comment

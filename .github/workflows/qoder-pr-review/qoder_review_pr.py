@@ -469,7 +469,11 @@ def run_qoder_with_model_fallback(prompt: str, preferred_model: str) -> tuple[in
     code = 1
     stdout = ""
     stderr = ""
-    for model in [preferred_model, "auto", "Lite"]:
+    fallback_models = [preferred_model]
+    if preferred_model != "auto":
+        fallback_models.extend(["Qwen3.7-Max", "auto"])
+
+    for model in fallback_models:
         if model in attempted:
             continue
         attempted.add(model)
