@@ -11,6 +11,7 @@ from typing import Iterable
 COMMENT_MARKER = "<!-- qoder-pr-review:v1 -->"
 MAX_COMMENT_CHARS = 60000
 POLICY_TARGET = Path("AGENTS.md")
+DEFAULT_QODER_TIMEOUT_SECONDS = 600
 SECRET_ENV_NAMES = (
     "GH_TOKEN",
     "GITHUB_TOKEN",
@@ -99,13 +100,45 @@ def log(message: str) -> None:
     print(message, file=sys.stderr)
 
 
-def run_capture(cmd: list[str]) -> tuple[int, str, str]:
-    result = subprocess.run(cmd, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    return result.returncode, result.stdout, result.stderr
+def ensure_text(value: str | bytes | None) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, bytes):
+        return value.decode("utf-8", errors="replace")
+    return value
+
+
+def run_capture(cmd: list[str], timeout_seconds: int | None = None) -> tuple[int, str, str]:
+    try:
+        result = subprocess.run(
+            cmd,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=timeout_seconds,
+        )
+        return result.returncode, result.stdout, result.stderr
+    except subprocess.TimeoutExpired as exc:
+        stdout = ensure_text(exc.stdout)
+        stderr = ensure_text(exc.stderr)
+        timeout_message = f"Command timed out after {timeout_seconds} seconds."
+        stderr = f"{stderr.strip()}\n{timeout_message}".strip()
+        return 124, stdout, stderr
 
 
 def qodercli_bin() -> str:
     return os.getenv("QODERCLI_BIN") or "qodercli"
+
+
+def qoder_timeout_seconds() -> int:
+    raw = os.getenv("QODER_REVIEW_TIMEOUT_SECONDS")
+    if not raw:
+        return DEFAULT_QODER_TIMEOUT_SECONDS
+    try:
+        value = int(raw)
+    except ValueError:
+        return DEFAULT_QODER_TIMEOUT_SECONDS
+    return value if value > 0 else DEFAULT_QODER_TIMEOUT_SECONDS
 
 
 def redact_known_secrets(text: str) -> str:
@@ -260,6 +293,17 @@ def first_non_empty_line(text: str) -> str:
     return ""
 
 
+def invalid_output_detail(stdout: str) -> str:
+    first_line = first_non_empty_line(redact_known_secrets(stdout)) or "<empty>"
+    if len(first_line) > 500:
+        first_line = f"{first_line[:500]}..."
+    return (
+        "The first non-empty line must be `PASS — Qoder PR Review` or "
+        "`FAIL — Qoder PR Review` for a real review. "
+        f"Actual first non-empty stdout line: {first_line!r}."
+    )
+
+
 def status_from_output(text: str) -> str | None:
     first = first_non_empty_line(text)
     for prefix in VALID_RESULT_PREFIXES:
@@ -405,8 +449,10 @@ def run_qoder(prompt: str, model: str) -> tuple[int, str, str]:
         "-p",
         prompt,
     ]
+    timeout_seconds = qoder_timeout_seconds()
     log(f"Qoder invocation: starting qodercli /review with model {model}")
-    return run_capture(cmd)
+    log(f"Qoder invocation timeout: {timeout_seconds} seconds")
+    return run_capture(cmd, timeout_seconds=timeout_seconds)
 
 
 def run_qoder_with_model_fallback(prompt: str, preferred_model: str) -> tuple[int, str, str, str]:
@@ -470,7 +516,7 @@ def main() -> int:
         if status is None or status == "SKIP":
             result = fail_result(
                 "Qoder output did not match required PASS/FAIL contract.",
-                "The first non-empty line must be `PASS — Qoder PR Review` or `FAIL — Qoder PR Review` for a real review.",
+                invalid_output_detail(stdout),
                 model,
             )
             print(result)
