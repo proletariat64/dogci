@@ -66,6 +66,38 @@ Kimi-K2.7-Code
         self.assertEqual(model, "auto")
         self.assertEqual(calls, ["GLM-5.2", "Qwen3.7-Max", "auto"])
 
+    def test_qoder_model_timeout_falls_back_to_auto_after_qwen(self) -> None:
+        calls = []
+
+        def fake_run_qoder(prompt: str, model: str) -> tuple[int, str, str]:
+            calls.append(model)
+            if model == "GLM-5.2":
+                return 1, f"Model '{model}' is restricted for this repository by a security policy.", ""
+            if model == "Qwen3.7-Max":
+                return 124, "", "Command timed out after 600 seconds."
+            return 0, "PASS — Qoder PR Review\n\n## Summary\n- ok\n", ""
+
+        with mock.patch.object(runner, "run_qoder", side_effect=fake_run_qoder):
+            code, stdout, stderr, model = runner.run_qoder_with_model_fallback("prompt", "GLM-5.2")
+
+        self.assertEqual(code, 0)
+        self.assertEqual(model, "auto")
+        self.assertEqual(calls, ["GLM-5.2", "Qwen3.7-Max", "auto"])
+
+    def test_last_model_timeout_fails_closed(self) -> None:
+        calls = []
+
+        def fake_run_qoder(prompt: str, model: str) -> tuple[int, str, str]:
+            calls.append(model)
+            return 124, "", "Command timed out after 600 seconds."
+
+        with mock.patch.object(runner, "run_qoder", side_effect=fake_run_qoder):
+            code, stdout, stderr, model = runner.run_qoder_with_model_fallback("prompt", "auto")
+
+        self.assertEqual(code, 124)
+        self.assertEqual(model, "auto")
+        self.assertEqual(calls, ["auto"])
+
     def test_runtime_fallback_order_uses_named_constant(self) -> None:
         self.assertEqual(runner.RESTRICTED_MODEL_FALLBACKS, ("Qwen3.7-Max", "auto"))
 

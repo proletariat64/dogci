@@ -265,6 +265,10 @@ def model_restricted(stdout: str, stderr: str) -> bool:
     return "restricted for this repository by a security policy" in combined
 
 
+def model_timed_out(code: int) -> bool:
+    return code == 124
+
+
 def qoder_failure_detail(code: int, stdout: str, stderr: str) -> str:
     parts = []
     if stdout.strip():
@@ -476,19 +480,24 @@ def run_qoder_with_model_fallback(prompt: str, preferred_model: str) -> tuple[in
     if preferred_model != "auto":
         fallback_models.extend(RESTRICTED_MODEL_FALLBACKS)
 
-    for model in fallback_models:
+    for index, model in enumerate(fallback_models):
         if model in attempted:
             continue
         attempted.add(model)
         last_model = model
+        has_next_model = index < len(fallback_models) - 1
 
         code, stdout, stderr = run_qoder(prompt, model)
         log(f"Qoder exit status: {code}")
         if code == 0:
             return code, stdout, stderr, model
 
-        if model_restricted(stdout, stderr):
+        if has_next_model and model_restricted(stdout, stderr):
             github_warning(f"Qoder model `{model}` is restricted for this repository; trying fallback model.")
+            continue
+
+        if has_next_model and model_timed_out(code):
+            github_warning(f"Qoder model `{model}` timed out; trying fallback model.")
             continue
 
         return code, stdout, stderr, model
