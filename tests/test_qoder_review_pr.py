@@ -103,6 +103,25 @@ Kimi-K2.7-Code
         self.assertEqual(runner.status_from_output(text), "PASS")
         self.assertIn("## Blocking findings", runner.missing_required_sections(text))
 
+    def test_extract_review_markdown_skips_qoder_preface(self) -> None:
+        text = """I've reviewed the changed files.
+
+PASS — Qoder PR Review
+
+## Summary
+- ok
+"""
+        extracted = runner.extract_review_markdown(text)
+        self.assertIsNotNone(extracted)
+        self.assertTrue(extracted.startswith("PASS — Qoder PR Review"))
+
+    def test_extract_review_markdown_rejects_multiple_blocks(self) -> None:
+        text = """PASS — Qoder PR Review
+
+FAIL — Qoder PR Review
+"""
+        self.assertIsNone(runner.extract_review_markdown(text))
+
     def test_model_used_section_is_normalized_to_actual_model(self) -> None:
         text = """PASS — Qoder PR Review
 

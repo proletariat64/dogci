@@ -312,6 +312,14 @@ def status_from_output(text: str) -> str | None:
     return None
 
 
+def extract_review_markdown(text: str) -> str | None:
+    lines = text.splitlines()
+    starts = [index for index, line in enumerate(lines) if line.strip() in VALID_RESULT_PREFIXES]
+    if len(starts) != 1:
+        return None
+    return "\n".join(lines[starts[0] :]).strip() + "\n"
+
+
 def missing_required_sections(text: str) -> list[str]:
     return [section for section in REQUIRED_REVIEW_SECTIONS if section not in text]
 
@@ -511,11 +519,10 @@ def main() -> int:
             handle_result_comment(env, result)
             return code or 1
 
-        status = status_from_output(stdout)
-        safe_stdout = redact_known_secrets(stdout)
-        if status is None or status == "SKIP":
+        review_markdown = extract_review_markdown(stdout)
+        if review_markdown is None:
             result = fail_result(
-                "Qoder output did not match required PASS/FAIL contract.",
+                "Qoder output did not contain one valid PASS/FAIL review block.",
                 invalid_output_detail(stdout),
                 model,
             )
@@ -523,7 +530,19 @@ def main() -> int:
             handle_result_comment(env, result)
             return 1
 
-        missing_sections = missing_required_sections(safe_stdout)
+        status = status_from_output(review_markdown)
+        safe_review_markdown = redact_known_secrets(review_markdown)
+        if status is None or status == "SKIP":
+            result = fail_result(
+                "Qoder output did not match required PASS/FAIL contract.",
+                invalid_output_detail(review_markdown),
+                model,
+            )
+            print(result)
+            handle_result_comment(env, result)
+            return 1
+
+        missing_sections = missing_required_sections(safe_review_markdown)
         if missing_sections:
             result = fail_result(
                 "Qoder output did not include all required review sections.",
@@ -534,7 +553,7 @@ def main() -> int:
             handle_result_comment(env, result)
             return 1
 
-        final_output = with_actual_model_used(safe_stdout, model)
+        final_output = with_actual_model_used(safe_review_markdown, model)
         print(final_output)
         handle_result_comment(env, final_output)
         return 0 if status == "PASS" else 1
