@@ -1,0 +1,87 @@
+name: Qoder PR Review
+
+on:
+  pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - ready_for_review
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+concurrency:
+  group: qoder-pr-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  qoder-pr-review:
+    if: github.event.pull_request.draft == false
+    runs-on:
+      - self-hosted
+      - linux
+
+    env:
+      QODERCLI_VERSION: "1.0.34"
+      QODERCLI_CACHE_DIR: .github/.cache/qodercli
+
+    steps:
+      - name: Checkout PR
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Show context
+        run: |
+          echo "PR #${{ github.event.pull_request.number }}"
+          echo "Base: ${{ github.event.pull_request.base.ref }}"
+          echo "Head: ${{ github.event.pull_request.head.ref }}"
+          git status --short --branch
+          git log --oneline -5
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Restore qodercli cache
+        id: qodercli-cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.QODERCLI_CACHE_DIR }}
+          key: qodercli-${{ runner.os }}-${{ runner.arch }}-${{ env.QODERCLI_VERSION }}
+
+      - name: Install qodercli
+        if: steps.qodercli-cache.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p "$QODERCLI_CACHE_DIR"
+          npm install -g "@qoder-ai/qodercli@${QODERCLI_VERSION}" --prefix "$GITHUB_WORKSPACE/$QODERCLI_CACHE_DIR"
+
+      - name: Add qodercli to PATH
+        run: |
+          echo "$GITHUB_WORKSPACE/$QODERCLI_CACHE_DIR/bin" >> "$GITHUB_PATH"
+
+      - name: Check qodercli
+        run: |
+          ACTUAL_VERSION="$(qodercli --version)"
+          echo "qodercli version: ${ACTUAL_VERSION}"
+          test "${ACTUAL_VERSION}" = "${QODERCLI_VERSION}"
+
+      - name: Deploy Qoder review policy
+        run: |
+          cp .github/workflows/qoder-pr-review/AGENTS.md AGENTS.md
+
+      - name: Run Qoder PR review
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          BASE_REF: origin/${{ github.event.pull_request.base.ref }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        run: |
+          cd "$GITHUB_WORKSPACE"
+          python3 .github/workflows/qoder-pr-review/qoder_review_pr.py
