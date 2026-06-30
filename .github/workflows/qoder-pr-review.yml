@@ -78,6 +78,9 @@ jobs:
 
       - name: Deploy Qoder review policy
         run: |
+          if [ -f AGENTS.md ]; then
+            echo "::warning title=Qoder PR Review::Overwriting root AGENTS.md with deployed Qoder review policy."
+          fi
           cp .github/workflows/qoder-pr-review/AGENTS.md AGENTS.md
 
       - name: Run Qoder PR review

@@ -66,6 +66,9 @@ Kimi-K2.7-Code
         self.assertEqual(model, "auto")
         self.assertEqual(calls, ["GLM-5.2", "Qwen3.7-Max", "auto"])
 
+    def test_runtime_fallback_order_uses_named_constant(self) -> None:
+        self.assertEqual(runner.RESTRICTED_MODEL_FALLBACKS, ("Qwen3.7-Max", "auto"))
+
     def test_auto_model_discovery_fallback_does_not_try_named_models(self) -> None:
         calls = []
 
@@ -180,6 +183,14 @@ FAIL — Qoder PR Review
 
         self.assertEqual(len(comments), 101)
         self.assertEqual(comments[-1]["id"], 101)
+
+    def test_list_issue_comments_fails_after_max_pages(self) -> None:
+        page = [{"id": i, "body": "x"} for i in range(100)]
+
+        with mock.patch.object(runner, "MAX_COMMENT_PAGES", 2):
+            with mock.patch.object(runner, "gh_api_json", return_value=page):
+                with self.assertRaisesRegex(RuntimeError, "Exceeded maximum GitHub comment pages"):
+                    runner.list_issue_comments("owner/repo", "1")
 
 
 if __name__ == "__main__":

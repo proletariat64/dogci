@@ -10,8 +10,10 @@ from typing import Iterable
 
 COMMENT_MARKER = "<!-- qoder-pr-review:v1 -->"
 MAX_COMMENT_CHARS = 60000
+MAX_COMMENT_PAGES = 100
 POLICY_TARGET = Path("AGENTS.md")
 DEFAULT_QODER_TIMEOUT_SECONDS = 600
+RESTRICTED_MODEL_FALLBACKS = ("Qwen3.7-Max", "auto")
 SECRET_ENV_NAMES = (
     "GH_TOKEN",
     "GITHUB_TOKEN",
@@ -363,7 +365,7 @@ def gh_api_with_payload(method: str, endpoint: str, payload: dict[str, str]) -> 
 def list_issue_comments(repository: str, pr_number: str) -> list[object]:
     comments: list[object] = []
     page = 1
-    while True:
+    while page <= MAX_COMMENT_PAGES:
         current = gh_api_json([f"repos/{repository}/issues/{pr_number}/comments?per_page=100&page={page}"])
         if not isinstance(current, list):
             raise RuntimeError("GitHub comments API returned an unexpected response")
@@ -371,6 +373,7 @@ def list_issue_comments(repository: str, pr_number: str) -> list[object]:
         if len(current) < 100:
             return comments
         page += 1
+    raise RuntimeError("Exceeded maximum GitHub comment pages while looking for Qoder review comment")
 
 
 def post_or_update_comment(repository: str, pr_number: str, result_markdown: str) -> str | None:
@@ -471,7 +474,7 @@ def run_qoder_with_model_fallback(prompt: str, preferred_model: str) -> tuple[in
     stderr = ""
     fallback_models = [preferred_model]
     if preferred_model != "auto":
-        fallback_models.extend(["Qwen3.7-Max", "auto"])
+        fallback_models.extend(RESTRICTED_MODEL_FALLBACKS)
 
     for model in fallback_models:
         if model in attempted:
