@@ -246,6 +246,9 @@ Review GitHub PR #{env['pr_number']} in {env['repository']}.
 Base: {env['base_ref']}
 Head: {env['head_ref']}
 Follow project-root AGENTS.md strictly.
+Return only the final review markdown.
+The first non-empty line must be exactly `PASS — Qoder PR Review` or `FAIL — Qoder PR Review`.
+Do not include any preface, separator, or explanation before the status line.
 """
 
 
@@ -388,10 +391,15 @@ def run_qoder(prompt: str, model: str) -> tuple[int, str, str]:
 
 def run_qoder_with_model_fallback(prompt: str, preferred_model: str) -> tuple[int, str, str, str]:
     attempted: set[str] = set()
+    last_model = preferred_model
+    code = 1
+    stdout = ""
+    stderr = ""
     for model in [preferred_model, "auto", "Lite"]:
         if model in attempted:
             continue
         attempted.add(model)
+        last_model = model
 
         code, stdout, stderr = run_qoder(prompt, model)
         log(f"Qoder exit status: {code}")
@@ -404,7 +412,7 @@ def run_qoder_with_model_fallback(prompt: str, preferred_model: str) -> tuple[in
 
         return code, stdout, stderr, model
 
-    return code, stdout, stderr, model
+    return code, stdout, stderr, last_model
 
 
 def handle_result_comment(env: dict[str, str], result: str) -> None:
