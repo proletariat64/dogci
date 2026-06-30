@@ -69,16 +69,22 @@ jobs:
         with:
           node-version: "22"
 
-      - id: qodercli-cache
-        uses: actions/cache@v4
+      - id: qodercli-cache-restore
+        uses: actions/cache/restore@v4
         with:
           path: ${{ env.QODERCLI_CACHE_DIR }}
           key: qodercli-${{ runner.os }}-${{ runner.arch }}-${{ env.QODERCLI_VERSION }}
 
-      - if: steps.qodercli-cache.outputs.cache-hit != 'true'
+      - if: steps.qodercli-cache-restore.outputs.cache-hit != 'true'
         run: |
           mkdir -p "$QODERCLI_CACHE_DIR"
           npm install -g "@qoder-ai/qodercli@${QODERCLI_VERSION}" --prefix "$GITHUB_WORKSPACE/$QODERCLI_CACHE_DIR"
+
+      - if: steps.qodercli-cache-restore.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ env.QODERCLI_CACHE_DIR }}
+          key: ${{ steps.qodercli-cache-restore.outputs.cache-primary-key }}
 
       - run: echo "$GITHUB_WORKSPACE/$QODERCLI_CACHE_DIR/bin" >> "$GITHUB_PATH"
 
