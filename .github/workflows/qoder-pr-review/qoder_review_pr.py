@@ -271,6 +271,13 @@ def missing_required_sections(text: str) -> list[str]:
     return [section for section in REQUIRED_REVIEW_SECTIONS if section not in text]
 
 
+def with_actual_model_used(text: str, model: str) -> str:
+    replacement = f"## Model used\n- {model}\n"
+    if "## Model used" not in text:
+        return text
+    return re.sub(r"(?ms)^## Model used\s*\n.*\Z", replacement, text.rstrip()) + "\n"
+
+
 def trim_comment(body: str) -> str:
     if len(body) <= MAX_COMMENT_CHARS:
         return body
@@ -468,8 +475,9 @@ def main() -> int:
             handle_result_comment(env, result)
             return 1
 
-        print(safe_stdout)
-        handle_result_comment(env, safe_stdout)
+        final_output = with_actual_model_used(safe_stdout, model)
+        print(final_output)
+        handle_result_comment(env, final_output)
         return 0 if status == "PASS" else 1
 
     except Exception as exc:

@@ -103,6 +103,17 @@ Kimi-K2.7-Code
         self.assertEqual(runner.status_from_output(text), "PASS")
         self.assertIn("## Blocking findings", runner.missing_required_sections(text))
 
+    def test_model_used_section_is_normalized_to_actual_model(self) -> None:
+        text = """PASS — Qoder PR Review
+
+## Summary
+- ok
+
+## Model used
+- unknown
+"""
+        self.assertIn("## Model used\n- Lite\n", runner.with_actual_model_used(text, "Lite"))
+
 
 if __name__ == "__main__":
     unittest.main()
