@@ -224,6 +224,22 @@ def resolve_model() -> tuple[str, bool]:
     return latest_glm, False
 
 
+def model_restricted(stdout: str, stderr: str) -> bool:
+    combined = f"{stdout}\n{stderr}".lower()
+    return "restricted for this repository by a security policy" in combined
+
+
+def qoder_failure_detail(code: int, stdout: str, stderr: str) -> str:
+    parts = []
+    if stdout.strip():
+        parts.append(f"stdout: {redact_known_secrets(stdout.strip())}")
+    if stderr.strip():
+        parts.append(f"stderr: {redact_known_secrets(stderr.strip())}")
+    if not parts:
+        parts.append(f"qodercli exit code {code}")
+    return "; ".join(parts)
+
+
 def build_prompt(env: dict[str, str]) -> str:
     return f"""/review
 Review GitHub PR #{env['pr_number']} in {env['repository']}.
@@ -361,15 +377,34 @@ def run_qoder(prompt: str, model: str) -> tuple[int, str, str]:
         qodercli_bin(),
         "--model",
         model,
-        "--max-turns",
-        "10",
         "--output-format",
         "text",
         "-p",
         prompt,
     ]
-    log("Qoder invocation: starting qodercli /review")
+    log(f"Qoder invocation: starting qodercli /review with model {model}")
     return run_capture(cmd)
+
+
+def run_qoder_with_model_fallback(prompt: str, preferred_model: str) -> tuple[int, str, str, str]:
+    attempted: set[str] = set()
+    for model in [preferred_model, "auto", "Lite"]:
+        if model in attempted:
+            continue
+        attempted.add(model)
+
+        code, stdout, stderr = run_qoder(prompt, model)
+        log(f"Qoder exit status: {code}")
+        if code == 0:
+            return code, stdout, stderr, model
+
+        if model_restricted(stdout, stderr):
+            github_warning(f"Qoder model `{model}` is restricted for this repository; trying fallback model.")
+            continue
+
+        return code, stdout, stderr, model
+
+    return code, stdout, stderr, model
 
 
 def handle_result_comment(env: dict[str, str], result: str) -> None:
@@ -391,12 +426,11 @@ def main() -> int:
         if fallback_used:
             log("Model fallback used: auto")
 
-        code, stdout, stderr = run_qoder(build_prompt(env), model)
-        log(f"Qoder exit status: {code}")
+        code, stdout, stderr, model = run_qoder_with_model_fallback(build_prompt(env), model)
         if code != 0:
             result = fail_result(
                 "qodercli failed to complete review.",
-                redact_known_secrets(stderr.strip()) or f"qodercli exit code {code}",
+                qoder_failure_detail(code, stdout, stderr),
                 model,
             )
             print(result)
