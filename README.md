@@ -9,6 +9,7 @@ Standalone target-repo deployment for Qoder-powered Pull Request review CI.
 - uses Qoder `/review`
 - prefers the latest available GLM model
 - falls back to `auto` when model discovery fails
+- falls back from repository-restricted models to `auto`, then `Lite`
 - deploys the bundled review policy to project-root `AGENTS.md` before Qoder starts
 - skips only explicit safe binary/document asset PRs
 - posts or updates one stable PR comment
@@ -52,13 +53,12 @@ concurrency:
 jobs:
   qoder-pr-review:
     if: github.event.pull_request.draft == false
-    runs-on:
-      - self-hosted
-      - linux
+    runs-on: ubuntu-24.04
 
     env:
       QODERCLI_VERSION: "1.0.34"
       QODERCLI_CACHE_DIR: .github/.cache/qodercli
+      QODER_REVIEW_TIMEOUT_SECONDS: "600"
 
     steps:
       - uses: actions/checkout@v4
@@ -98,6 +98,7 @@ jobs:
       - env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          QODER_PERSONAL_ACCESS_TOKEN: ${{ secrets.QODER_PERSONAL_ACCESS_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           BASE_REF: origin/${{ github.event.pull_request.base.ref }}
@@ -107,7 +108,7 @@ jobs:
           python3 .github/workflows/qoder-pr-review/qoder_review_pr.py
 ```
 
-The runner must support Qoder authentication for the installed `qodercli`.
+Create the `QODER_PERSONAL_ACCESS_TOKEN` repository secret from a token accepted by `qodercli`.
 
 ## Deployed Policy
 
