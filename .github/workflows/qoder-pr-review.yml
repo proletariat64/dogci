@@ -20,9 +20,7 @@ concurrency:
 jobs:
   qoder-pr-review:
     if: github.event.pull_request.draft == false
-    runs-on:
-      - self-hosted
-      - linux
+    runs-on: ubuntu-24.04
 
     env:
       QODERCLI_VERSION: "1.0.34"

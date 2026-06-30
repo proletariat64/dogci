@@ -114,6 +114,24 @@ Kimi-K2.7-Code
 """
         self.assertIn("## Model used\n- Lite\n", runner.with_actual_model_used(text, "Lite"))
 
+    def test_list_issue_comments_paginates_until_short_page(self) -> None:
+        page1 = [{"id": i, "body": "x"} for i in range(100)]
+        page2 = [{"id": 101, "body": "marker"}]
+
+        def fake_gh_api_json(args: list[str]) -> object:
+            endpoint = args[0]
+            if "page=1" in endpoint:
+                return page1
+            if "page=2" in endpoint:
+                return page2
+            raise AssertionError(endpoint)
+
+        with mock.patch.object(runner, "gh_api_json", side_effect=fake_gh_api_json):
+            comments = runner.list_issue_comments("owner/repo", "1")
+
+        self.assertEqual(len(comments), 101)
+        self.assertEqual(comments[-1]["id"], 101)
+
 
 if __name__ == "__main__":
     unittest.main()

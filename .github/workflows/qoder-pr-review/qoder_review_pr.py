@@ -307,6 +307,19 @@ def gh_api_with_payload(method: str, endpoint: str, payload: dict[str, str]) -> 
         Path(payload_path).unlink(missing_ok=True)
 
 
+def list_issue_comments(repository: str, pr_number: str) -> list[object]:
+    comments: list[object] = []
+    page = 1
+    while True:
+        current = gh_api_json([f"repos/{repository}/issues/{pr_number}/comments?per_page=100&page={page}"])
+        if not isinstance(current, list):
+            raise RuntimeError("GitHub comments API returned an unexpected response")
+        comments.extend(current)
+        if len(current) < 100:
+            return comments
+        page += 1
+
+
 def post_or_update_comment(repository: str, pr_number: str, result_markdown: str) -> str | None:
     if not (os.getenv("GH_TOKEN") or os.getenv("GITHUB_TOKEN")):
         if os.getenv("GITHUB_ACTIONS"):
@@ -315,14 +328,13 @@ def post_or_update_comment(repository: str, pr_number: str, result_markdown: str
         return None
 
     body = make_comment_body(result_markdown)
-    comments = gh_api_json([f"repos/{repository}/issues/{pr_number}/comments?per_page=100"])
+    comments = list_issue_comments(repository, pr_number)
 
     existing_id = None
-    if isinstance(comments, list):
-        for comment in comments:
-            if COMMENT_MARKER in str(comment.get("body", "")):
-                existing_id = comment.get("id")
-                break
+    for comment in comments:
+        if isinstance(comment, dict) and COMMENT_MARKER in str(comment.get("body", "")):
+            existing_id = comment.get("id")
+            break
 
     if existing_id:
         updated = gh_api_with_payload("PATCH", f"repos/{repository}/issues/comments/{existing_id}", {"body": body})
